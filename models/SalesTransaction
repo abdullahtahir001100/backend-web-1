@@ -1,0 +1,36 @@
+const mongoose = require('mongoose');
+
+// SalesTransaction Schema
+const salesTransactionSchema = new mongoose.Schema({
+    // Transaction ki raqam (Earnings Report ke liye)
+    amount: { 
+        type: Number, 
+        required: true, 
+        min: 0 // Amount zero ya positive hona chahiye
+    },
+    // Kis desh se sale hui (Sales Countries List ke liye)
+    country: { 
+        type: String, 
+        required: true 
+    },
+    // Transaction ka source (Campaign Source Table ke liye)
+    source: { 
+        type: String 
+    }, 
+    // Transaction ka medium (Campaign Source Table ke liye)
+    medium: { 
+        type: String 
+    }, 
+    // Kis marketing campaign se aayi (Campaign Source Table ke liye)
+    campaign: { 
+        type: String 
+    }, 
+    // Transaction date aur time (Time-based reporting ke liye)
+    createdAt: { 
+        type: Date, 
+        default: Date.now 
+    }
+});
+
+// Model ko export karna zaroori hai taki aap ise Express routes mein use kar saken.
+module.exports = mongoose.model('SalesTransaction', salesTransactionSchema);
