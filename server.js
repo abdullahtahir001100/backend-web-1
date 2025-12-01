@@ -4,85 +4,82 @@
 const express = require('express');
 const dotenv = require('dotenv');
 const cors = require('cors'); 
-const cookieParser = require('cookie-parser'); // <-- CRITICAL: For reading the authToken cookie
-const mongoose = require('mongoose');
 
 // Custom files ko import karein
-const connectDB = require('./config/db'); // Apni Database Connection file
+const connectDB = require('./config/db'); 
 const productRoutes = require('./routes/productRoutes'); 
 const contactRoutes = require('./routes/contactRoutes'); 
 const orderRoutes = require('./routes/orderRoutes'); 
 const dashboardRoutes = require('./routes/dashboardRoutes'); 
-const authAndUserRoutes = require('./routes/authAndUserRoutes'); // NEW: Combined auth and user routes
+const authAndUserRoutes = require('./routes/authAndUserRoutes');
 
 // 2. Environment Variables Ko Load Karein
 dotenv.config();
 
 // 3. Database Ko Connect Karein
-// NOTE: Since you did not provide config/db.js, I will use a simple connection here.
-// You must ensure your actual connectDB() function connects to the MONGO_URI in .env.
-const connectDB_simple = async () => {
-    try {
-        const conn = await mongoose.connect(process.env.MONGO_URI);
-        console.log(`MongoDB Connected: ${conn.connection.host}`);
-    } catch (error) {
-        console.error(`Error: ${error.message}`);
-        process.exit(1);
-    }
-};
-connectDB_simple();
+connectDB(); 
 
 // 4. Express App Ko Initialize Karein
 const app = express();
 
-// **Static Files ko Serve karein**
+// Static Files ko Serve karein 
 app.use(express.static('public'));
 
-// 5. Middlewares Ko Configure Karein
-app.use(cookieParser()); // Use cookie parser BEFORE routes
-app.set('trust proxy', 1); // CRITICAL: Required for secure cookies (and getting real IP if behind proxy)
+// ---# 5. Middleware Configuration
+
+// 🌟 CORRECTED CORS CONFIGURATION START 🌟
+const allowedOrigins = [
+    'http://localhost:5500', 
+    'http://127.0.0.1:5501', // Your local development origin
+    'http://localhost:3000',
+    // PRODUCTION: Add your Vercel/live frontend URL(s) here (e.g., 'https://your-frontend.com')
+];
+
 app.use(cors({
-    // Allow ALL origins
-    origin: '*', 
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    exposedHeaders: ['Set-Cookie']
+    origin: (origin, callback) => {
+        // Allow requests with no origin (like mobile apps, curl, or same-origin requests)
+        if (!origin) return callback(null, true); 
+        
+        // Check if the requesting origin is in the allowed list
+        if (allowedOrigins.indexOf(origin) === -1) {
+            const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
+            return callback(new Error(msg), false);
+        }
+        return callback(null, true);
+    },
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], // Allow all necessary methods, including OPTIONS for preflight
+    credentials: true, // CRITICAL: Allows cookies/Authorization headers to be sent/received
+    allowedHeaders: ['Content-Type', 'Authorization'], // Specify headers used by your client
+    exposedHeaders: ['Set-Cookie'] // Explicitly expose headers you want the client to read
 }));
+// 🌟 CORRECTED CORS CONFIGURATION END 🌟
 
 // Body Parser: Incoming request bodies ko JSON format mein parse karne ke liye
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-// 6. Root Route (Testing)
+// ---## 6. Route Setup
+
+// Root Route (Testing)
 app.get('/', (req, res) => {
     res.send('API is running successfully!');
 });
 
-// 7. Routes Ko Link Karein
+// Existing Core Routes
 app.use('/api/products', productRoutes);
 app.use('/api/contact', contactRoutes);
 app.use('/api/orders', orderRoutes);
+
+// Dashboard Analytics Route 
 app.use('/api/v1', dashboardRoutes); 
 
-// ⭐ Core Authentication and User Routes
-app.use('/api', authAndUserRoutes); // This mounts auth and user routes under /api
+// Authentication and User Routes
+app.use('/api', authAndUserRoutes);
 
-// 8. Error Handling Middleware (Recommended last middleware)
-app.use((err, req, res, next) => {
-    console.error(err.stack);
-    res.status(500).json({ success: false, error: 'Something broke!' });
-});
+// ---## 7. Server Start
 
+const PORT = process.env.PORT || 5000; 
 
-// 9. Start Server
-const PORT = process.env.PORT || 5000;
-const server = app.listen(PORT, () => {
-    console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
-});
-
-process.on('unhandledRejection', (err, promise) => {
-    console.log(`Error: ${err.message}`);
-    // Close server & exit process
-    server.close(() => process.exit(1));
-});
+app.listen(PORT, () =>
+    console.log(`🚀 Server running in ${process.env.NODE_ENV} mode on port ${PORT}`)
+);
