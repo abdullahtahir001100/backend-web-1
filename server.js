@@ -41,11 +41,10 @@ app.use(express.static('public'));
 // 5. Middlewares Ko Configure Karein
 app.use(cookieParser()); // Use cookie parser BEFORE routes
 app.set('trust proxy', 1); // CRITICAL: Required for secure cookies (and getting real IP if behind proxy)
-
 app.use(cors({
-    // Allow your development origins (FE: 5500, BE: 5000)
-    origin: ["http://localhost:5500", "http://127.0.0.1:5501", "http://localhost:3000"],
-    credentials: true, // CRITICAL: Allows cookies to be sent/received
+    // Allow ALL origins
+    origin: '*', 
+    credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     exposedHeaders: ['Set-Cookie']
