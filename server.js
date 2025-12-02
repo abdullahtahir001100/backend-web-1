@@ -9,7 +9,7 @@ const connectDB = require('./config/db'); // Apni Database Connection file
 const productRoutes = require('./routes/productRoutes'); // Assuming this file exists
 const contactRoutes = require('./routes/contactRoutes'); // Assuming this file exists
 const orderRoutes = require('./routes/orderRoutes'); // Assuming this file exists
-
+const authAndUserRoutes = require('./routes/authAndUserRoutes');
 // **NEW: Dashboard Routes ko import karein**
 const dashboardRoutes = require('./routes/dashboardRoutes'); 
 
@@ -43,7 +43,7 @@ app.use('/api/orders', orderRoutes);
 
 // **NEW: Dashboard Analytics Route ko Link Karein**
 app.use('/api/v1', dashboardRoutes); 
-
+app.use('/api', authAndUserRoutes);
 // 8. Server Ko Start Karein
 const PORT = process.env.PORT || 5000; 
 
