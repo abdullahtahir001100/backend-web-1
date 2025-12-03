@@ -21,7 +21,7 @@ const productRoutes = require('./routes/productRoutes');
 const contactRoutes = require('./routes/contactRoutes'); 
 const orderRoutes = require('./routes/orderRoutes'); 
 const dashboardRoutes = require('./routes/dashboardRoutes'); 
-const authAndUserRoutes = require('./routes/auth');
+
 
 
 // 2. Environment Variables Ko Load Karein
@@ -65,7 +65,7 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/v1', dashboardRoutes); 
 
 // ⭐ Authentication and User Routes
-app.use('/api', authAndUserRoutes);
+// app.use('/api', authAndUserRoutes);
 
 
 // 8. Server Ko Start Karein
