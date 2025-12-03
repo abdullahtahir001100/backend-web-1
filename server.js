@@ -71,8 +71,8 @@ app.use('/api', authAndUserRoutes); // This mounts auth and user routes under /a
 
 // 8. Error Handling Middleware (Recommended last middleware)
 app.use((err, req, res, next) => {
-    console.error(err.stack);
-    res.status(500).json({ success: false, error: 'Something broke!' });
+    console.error('Error details:', err);
+    res.status(500).json({ success: false, error: 'Something broke!', details: err.message });
 });
 
 
