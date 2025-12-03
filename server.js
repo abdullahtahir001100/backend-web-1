@@ -14,6 +14,10 @@ const contactRoutes = require('./routes/contactRoutes');
 const orderRoutes = require('./routes/orderRoutes'); 
 const dashboardRoutes = require('./routes/dashboardRoutes'); 
 const reviewRoutes = require('./routes/reviewRoutes');
+const authRoutes = require('./routes/authRoutes'); 
+const userRoutes = require('./routes/userRoutes'); 
+const activityRoutes = require('./routes/activityRoutes'); 
+
  // NEW: Combined auth and user routes
 
 // 2. Environment Variables Ko Load Karein
@@ -45,7 +49,7 @@ app.set('trust proxy', 1); // CRITICAL: Required for secure cookies (and getting
 
 app.use(cors({
     // Allow your development origins (FE: 5500, BE: 5000)
-    origin: "*",
+    origin: ["http://127.0.0.1:5501"],
     credentials: true, // CRITICAL: Allows cookies to be sent/received
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
@@ -70,7 +74,9 @@ app.use('/api/v1', dashboardRoutes);
 app.use('/api/reviews', reviewRoutes);
 // ⭐ Core Authentication and User Routes
 // This mounts auth and user routes under /api
-
+app.use('/api/auth', authRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/activity', activityRoutes);
 // 8. Error Handling Middleware (Recommended last middleware)
 app.use((err, req, res, next) => {
     console.error(err.stack);
