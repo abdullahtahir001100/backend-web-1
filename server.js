@@ -13,7 +13,7 @@ const productRoutes = require('./routes/productRoutes');
 const contactRoutes = require('./routes/contactRoutes'); 
 const orderRoutes = require('./routes/orderRoutes'); 
 const dashboardRoutes = require('./routes/dashboardRoutes'); 
-const authAndUserRoutes = require('./routes/auth'); // NEW: Combined auth and user routes
+ // NEW: Combined auth and user routes
 
 // 2. Environment Variables Ko Load Karein
 dotenv.config();
