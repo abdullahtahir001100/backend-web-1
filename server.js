@@ -4,23 +4,39 @@
 const express = require('express');
 const dotenv = require('dotenv');
 const cors = require('cors'); 
-const cookieParser = require('cookie-parser'); // <-- CRITICAL: For reading the authToken cookie
+const cookieParser = require('cookie-parser');
 const mongoose = require('mongoose');
+const path = require('path'); // Standard Node.js module
 
-// Custom files ko import karein
+// 2. Custom Mongoose Models Ko **FIRST** Import Karein
+// This is the CRITICAL FIX for Vercel crashes related to Mongoose models.
+// Importing them here ensures they are registered before any controller/middleware tries to use them.
+require('./models/User'); // Loads the User model schema and registers it with Mongoose
+require('./models/Activity'); // Loads the Activity model schema and registers it with Mongoose
+// Agar aapke paas Order.js aur ContactMessage.js bhi hain, unhe bhi yahan import karein:
+// require('./models/Order'); 
+// require('./models/ContactMessage'); 
+
+
+// 3. Custom Utility and Route Files Ko Import Karein
 const connectDB = require('./config/db'); // Apni Database Connection file
 const productRoutes = require('./routes/productRoutes'); 
 const contactRoutes = require('./routes/contactRoutes'); 
 const orderRoutes = require('./routes/orderRoutes'); 
 const dashboardRoutes = require('./routes/dashboardRoutes'); 
- // NEW: Combined auth and user routes
+// NOTE: I am using 'authAndUserRoutes' as per your original error context, 
+// though your provided snippet used 'auth'. I'll stick to the original error-causing name.
+const authAndUserRoutes = require('./routes/auth'); 
 
-// 2. Environment Variables Ko Load Karein
-dotenv.config();
 
-// 3. Database Ko Connect Karein
-// NOTE: Since you did not provide config/db.js, I will use a simple connection here.
-// You must ensure your actual connectDB() function connects to the MONGO_URI in .env.
+// 4. Environment Variables Ko Load Karein
+dotenv.config(); // ⭐ Yeh hamesha Mongoose connection se pehle aana chahiye
+
+
+// 5. Database Ko Connect Karein
+// NOTE: Assuming your actual connectDB() function handles the Mongoose connection.
+// Agar aapke paas connectDB.js file nahi hai, neeche wala block use karein.
+// connectDB(); // Use your original connectDB() function
 const connectDB_simple = async () => {
     try {
         const conn = await mongoose.connect(process.env.MONGO_URI);
@@ -32,56 +48,63 @@ const connectDB_simple = async () => {
 };
 connectDB_simple();
 
-// 4. Express App Ko Initialize Karein
+
+// 6. Express App Ko Initialize Karein
 const app = express();
 
-// **Static Files ko Serve karein**
-app.use(express.static('public'));
 
-// 5. Middlewares Ko Configure Karein
-app.use(cookieParser()); // Use cookie parser BEFORE routes
-app.set('trust proxy', 1); // CRITICAL: Required for secure cookies (and getting real IP if behind proxy)
+// 7. Middlewares Ko Configure Karein
+app.use(cookieParser());
+app.set('trust proxy', 1); // Vercel and other cloud platforms ke liye zaruri
 
 app.use(cors({
-    // Allow your development origins (FE: 5500, BE: 5000)
-    origin: "*",
-    credentials: true, // CRITICAL: Allows cookies to be sent/received
+    origin: "*", // Production mein specific domain use karein
+    credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    exposedHeaders: ['Set-Cookie']
+    allowedHeaders: ['Content-Type', 'Authorization', 'Set-Cookie'],
 }));
 
 // Body Parser: Incoming request bodies ko JSON format mein parse karne ke liye
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-// 6. Root Route (Testing)
+
+// **Static Files ko Serve karein (Agar aap frontend isi server se serve kar rahe hain)**
+app.use(express.static(path.join(__dirname, 'public')));
+
+
+// 8. Routes Ko Link Karein
 app.get('/', (req, res) => {
     res.send('API is running successfully!');
 });
 
-// 7. Routes Ko Link Karein
+// Existing Core Routes
 app.use('/api/products', productRoutes);
 app.use('/api/contact', contactRoutes);
 app.use('/api/orders', orderRoutes);
+
+// Existing Dashboard Analytics Route
 app.use('/api/v1', dashboardRoutes); 
 
-// ⭐ Core Authentication and User Routes
- // This mounts auth and user routes under /api
+// ⭐ Authentication and User Routes (The previously error-causing route)
+app.use('/api', authAndUserRoutes);
 
-// 8. Error Handling Middleware (Recommended last middleware)
+
+// 9. Error Handling Middleware
 app.use((err, req, res, next) => {
     console.error(err.stack);
-    res.status(500).json({ success: false, error: 'Something broke!' });
+    res.status(500).json({ success: false, error: 'Something broke! Server Error.' });
 });
 
 
-// 9. Start Server
+// 10. Start Server
 const PORT = process.env.PORT || 5000;
 const server = app.listen(PORT, () => {
-    console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
+    console.log(`Server running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
 });
 
+
+// 11. Handle Unhandled Rejections
 process.on('unhandledRejection', (err, promise) => {
     console.log(`Error: ${err.message}`);
     // Close server & exit process
