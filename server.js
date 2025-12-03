@@ -13,6 +13,7 @@ const productRoutes = require('./routes/productRoutes');
 const contactRoutes = require('./routes/contactRoutes'); 
 const orderRoutes = require('./routes/orderRoutes'); 
 const dashboardRoutes = require('./routes/dashboardRoutes'); 
+const authAndUserRoutes = require('./routes/authAndUserRoutes'); // NEW: Combined auth and user routes
 
 // 2. Environment Variables Ko Load Karein
 dotenv.config();
@@ -25,8 +26,9 @@ const connectDB_simple = async () => {
         const conn = await mongoose.connect(process.env.MONGO_URI);
         console.log(`MongoDB Connected: ${conn.connection.host}`);
     } catch (error) {
-        console.error(`Error: ${error.message}`);
-        process.exit(1);
+        console.error(`MongoDB connection error (non-fatal in serverless): ${error.message}`);
+        // In serverless environments (Vercel), exiting the process will cause the function to crash.
+        // We log the error and allow the function to handle DB unavailability per request.
     }
 };
 connectDB_simple();
@@ -66,7 +68,13 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/v1', dashboardRoutes); 
 
 // ⭐ Core Authentication and User Routes
-// app.use('/api', authAndUserRoutes); // This mounts auth and user routes under /api
+try {
+    const authAndUserRoutes = require('./routes/authAndUserRoutes'); // Combined auth and user routes
+    app.use('/api', authAndUserRoutes); // Mount under /api
+    console.log('authAndUserRoutes loaded and mounted');
+} catch (err) {
+    console.error('Failed to load/mount authAndUserRoutes:', err);
+}
 
 // 8. Error Handling Middleware (Recommended last middleware)
 app.use((err, req, res, next) => {
