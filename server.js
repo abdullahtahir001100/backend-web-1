@@ -13,6 +13,7 @@ const productRoutes = require('./routes/productRoutes');
 const contactRoutes = require('./routes/contactRoutes'); 
 const orderRoutes = require('./routes/orderRoutes'); 
 const dashboardRoutes = require('./routes/dashboardRoutes'); 
+const reviewRoutes = require('./routes/reviewRoutes');
  // NEW: Combined auth and user routes
 
 // 2. Environment Variables Ko Load Karein
@@ -65,7 +66,8 @@ app.use('/api/products', productRoutes);
 app.use('/api/contact', contactRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/v1', dashboardRoutes); 
-
+// ⭐ NEW: Review Routes Ko Link Karein
+app.use('/api/reviews', reviewRoutes);
 // ⭐ Core Authentication and User Routes
 // This mounts auth and user routes under /api
 
