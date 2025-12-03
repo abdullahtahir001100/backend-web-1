@@ -67,7 +67,7 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/v1', dashboardRoutes); 
 
 // ⭐ Core Authentication and User Routes
-app.use('/api', authAndUserRoutes); // This mounts auth and user routes under /api
+// app.use('/api', authAndUserRoutes); // This mounts auth and user routes under /api
 
 // 8. Error Handling Middleware (Recommended last middleware)
 app.use((err, req, res, next) => {
