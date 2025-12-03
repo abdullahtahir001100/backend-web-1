@@ -13,7 +13,7 @@ const productRoutes = require('./routes/productRoutes');
 const contactRoutes = require('./routes/contactRoutes'); 
 const orderRoutes = require('./routes/orderRoutes'); 
 const dashboardRoutes = require('./routes/dashboardRoutes'); 
-const authAndUserRoutes = require('./routes/authAndUserRoutes'); // NEW: Combined auth and user routes
+const authAndUserRoutes = require('./routes/auth'); // NEW: Combined auth and user routes
 
 // 2. Environment Variables Ko Load Karein
 dotenv.config();
@@ -26,9 +26,8 @@ const connectDB_simple = async () => {
         const conn = await mongoose.connect(process.env.MONGO_URI);
         console.log(`MongoDB Connected: ${conn.connection.host}`);
     } catch (error) {
-        console.error(`MongoDB connection error (non-fatal in serverless): ${error.message}`);
-        // In serverless environments (Vercel), exiting the process will cause the function to crash.
-        // We log the error and allow the function to handle DB unavailability per request.
+        console.error(`Error: ${error.message}`);
+        process.exit(1);
     }
 };
 connectDB_simple();
@@ -45,7 +44,7 @@ app.set('trust proxy', 1); // CRITICAL: Required for secure cookies (and getting
 
 app.use(cors({
     // Allow your development origins (FE: 5500, BE: 5000)
-    origin: ["http://localhost:5500", "http://127.0.0.1:5501", "http://localhost:3000"],
+    origin: "*",
     credentials: true, // CRITICAL: Allows cookies to be sent/received
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
@@ -68,18 +67,12 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/v1', dashboardRoutes); 
 
 // ⭐ Core Authentication and User Routes
-try {
-    const authAndUserRoutes = require('./routes/authAndUserRoutes'); // Combined auth and user routes
-    app.use('/api', authAndUserRoutes); // Mount under /api
-    console.log('authAndUserRoutes loaded and mounted');
-} catch (err) {
-    console.error('Failed to load/mount authAndUserRoutes:', err);
-}
+ // This mounts auth and user routes under /api
 
 // 8. Error Handling Middleware (Recommended last middleware)
 app.use((err, req, res, next) => {
-    console.error('Error details:', err);
-    res.status(500).json({ success: false, error: 'Something broke!', details: err.message });
+    console.error(err.stack);
+    res.status(500).json({ success: false, error: 'Something broke!' });
 });
 
 
