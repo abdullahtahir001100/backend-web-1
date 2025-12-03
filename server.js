@@ -16,7 +16,7 @@ const dashboardRoutes = require('./routes/dashboardRoutes');
 const reviewRoutes = require('./routes/reviewRoutes');
 const authRoutes = require('./routes/authRoutes'); 
 const userRoutes = require('./routes/userRoutes'); 
-const activityRoutes = require('./routes/activityRoutes'); 
+// const activityRoutes = require('./routes/activityRoutes'); 
 
  // NEW: Combined auth and user routes
 
@@ -76,7 +76,7 @@ app.use('/api/reviews', reviewRoutes);
 // This mounts auth and user routes under /api
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
-app.use('/api/activity', activityRoutes);
+// app.use('/api/activity', activityRoutes);
 // 8. Error Handling Middleware (Recommended last middleware)
 app.use((err, req, res, next) => {
     console.error(err.stack);
