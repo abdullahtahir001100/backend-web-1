@@ -14,7 +14,7 @@ const contactRoutes = require('./routes/contactRoutes');
 const orderRoutes = require('./routes/orderRoutes'); 
 const dashboardRoutes = require('./routes/dashboardRoutes'); 
 const reviewRoutes = require('./routes/reviewRoutes');
-// const authRoutes = require('./routes/authRoutes'); 
+ const authRoutes = require('./routes/authRoutes'); 
 // const userRoutes = require('./routes/userRoutes'); 
 // const activityRoutes = require('./routes/activityRoutes'); 
 
@@ -74,7 +74,7 @@ app.use('/api/v1', dashboardRoutes);
 app.use('/api/reviews', reviewRoutes);
 // ⭐ Core Authentication and User Routes
 // This mounts auth and user routes under /api
-// app.use('/api/auth', authRoutes);
+ app.use('/api/auth', authRoutes);
 // app.use('/api/users', userRoutes);
 // app.use('/api/activity', activityRoutes);
 // 8. Error Handling Middleware (Recommended last middleware)
