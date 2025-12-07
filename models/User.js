@@ -45,6 +45,7 @@ const UserSchema = new mongoose.Schema({
     profilePic: { type: String, default: '/images/default_avatar.png' },
 
     // Device Management Array (Sessions)
+    // Stores active login sessions for remote logout/device management
     sessions: [{
         sessionId: { type: String, default: uuidv4, required: true },
         loginTime: { type: Date, default: Date.now },
@@ -52,35 +53,57 @@ const UserSchema = new mongoose.Schema({
         ip: { type: String, required: true },
     }],
 
-    // Password Reset Fields
+    // Password Reset Fields (standard practice for password reset flow)
     resetPasswordToken: String,
     resetPasswordExpire: Date,
 
 }, {
-    // Schema Options
+    // Schema Options: Allows virtual properties to be included in JSON/Object output
     toJSON: { virtuals: true },
     toObject: { virtuals: true }
 });
 
-// Middleware: Encrypt password using bcrypt before saving
+// ----------------------------------------------------------------------
+// --- Mongoose Middleware ---
+// ----------------------------------------------------------------------
+
+/**
+ * Pre-save hook: Encrypt password using bcrypt before saving to the database,
+ * but only if the password field has been modified (or is new).
+ */
 UserSchema.pre('save', async function(next) {
     if (!this.isModified('password')) {
-        next();
+        return next(); // Skip hashing if password wasn't changed
     }
     const salt = await bcrypt.genSalt(10);
     this.password = await bcrypt.hash(this.password, salt);
+    next();
 });
 
-// Method: Match user entered password to hashed password in database
+// ----------------------------------------------------------------------
+// --- Instance Methods ---
+// ----------------------------------------------------------------------
+
+/**
+ * Method: Compares the plain text password provided during login with the hashed
+ * password stored in the database.
+ * @param {string} enteredPassword - The password submitted by the user.
+ * @returns {Promise<boolean>} - True if passwords match.
+ */
 UserSchema.methods.matchPassword = async function(enteredPassword) {
+    // Note: this.password is available here because we explicitly 'select' it during login
     return await bcrypt.compare(enteredPassword, this.password);
 };
 
-// Method: Get signed JWT for user
+/**
+ * Method: Generates a JSON Web Token (JWT) containing the user ID and the current session ID.
+ * @param {string} sessionId - The unique ID for the current login session.
+ * @returns {string} - The signed JWT token.
+ */
 UserSchema.methods.getSignedToken = function(sessionId) {
-    // Token now includes both user ID and the specific sessionId
+    // Token payload includes user ID (for finding user) and sessionId (for session validation/logout)
     return jwt.sign({ id: this._id, sessionId: sessionId }, process.env.JWT_SECRET, {
-        expiresIn: process.env.JWT_EXPIRE
+        expiresIn: process.env.JWT_EXPIRE // JWT_EXPIRE defined in .env (e.g., '30d')
     });
 };
 

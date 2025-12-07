@@ -1,13 +1,13 @@
-// 📂 File: controllers/userController.js
-
 const User = require('../models/User');
 // Assume these models exist and are correctly defined
 const Order = require('../models/Order'); 
 const ContactMessage = require('../models/ContactMessage'); 
 const Activity = require('../models/Activity'); 
 const mongoose = require('mongoose');
-// Note: Assuming you have an ErrorResponse class, though we will use 
-// direct res.status().json() to match the style of your provided code.
+
+// --- IMPORTANT: CLOUDINARY IMPORT ---
+// 🔑 You must adjust the path if your cloudinary utility file is elsewhere
+const { uploadToCloudinary } = require('../config/cloudinary'); 
 
 // --- UTILITY FUNCTIONS ---
 
@@ -42,18 +42,28 @@ const formatTime = (date) => {
     return d.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
 };
 
+/**
+ * Converts a Multer file buffer into a Base64 Data URI string for Cloudinary.
+ * @param {object} file - The file object from req.file (must have buffer and mimetype).
+ * @returns {string|null} - Base64 Data URI string.
+ */
+const bufferToDataUri = (file) => {
+    if (!file || !file.buffer || !file.mimetype) return null;
+    // req.file.mimetype will give you 'image/jpeg', 'image/png', etc.
+    return `data:${file.mimetype};base64,${file.buffer.toString('base64')}`;
+};
+
 
 // ==================================================================
-// --- PROTECTED USER-SPECIFIC ENDPOINTS (Fixing 404s) ---
+// --- PROTECTED USER-SPECIFIC ENDPOINTS ---
 // ==================================================================
 
 // ------------------------------------------------------------------
-// GET: Get Me (Protected) - FIXES /api/users/me GET
+// GET: Get Me (Protected)
 // ------------------------------------------------------------------
 exports.getMe = async (req, res) => {
     // req.user is set by the 'protect' middleware and excludes password
     const user = req.user.toObject();
-    // The sessionStatus virtual field is automatically calculated by the User Model
     
     // We also need to send the session data for device management display
     const currentSessionId = req.sessionId; 
@@ -76,19 +86,21 @@ exports.getMe = async (req, res) => {
 };
 
 // ------------------------------------------------------------------
-// PUT: Update Me (Protected - Requires password verification) - FIXES /api/users/me PUT
+// PUT: Update Me (Protected - Requires password verification)
 // ------------------------------------------------------------------
 exports.updateMe = async (req, res) => {
+    // Note: req.body contains text fields (password, updateFields)
+    // req.file contains the uploaded image data (if Multer ran)
     const { password, updateFields } = req.body;
     const userId = req.user._id;
 
-    if (!password || !updateFields) {
-        return res.status(400).json({ success: false, error: 'Current password and update fields are required.' });
+    if (!password) { 
+        return res.status(400).json({ success: false, error: 'Current password is required.' });
     }
 
     try {
         // 1. Fetch user including password for verification
-        const user = await User.findById(userId).select('+password');
+        let user = await User.findById(userId).select('+password');
         
         // 2. Verify current password (MANDATORY SECURITY STEP)
         if (!(await user.matchPassword(password))) {
@@ -98,40 +110,79 @@ exports.updateMe = async (req, res) => {
         const updates = {};
         let passwordChanged = false;
 
-        // 3. Collect valid fields for update
-        if (updateFields.firstName) updates.firstName = updateFields.firstName;
-        if (updateFields.lastName) updates.lastName = updateFields.lastName;
-        if (updateFields.username) updates.username = updateFields.username;
-        if (updateFields.phone) updates.phone = updateFields.phone;
-        if (updateFields.email) updates.email = updateFields.email;
-
-        // --- Handle Password Change ---
-        if (updateFields.newPassword) {
-            if (updateFields.newPassword.length < 6) {
-                return res.status(400).json({ success: false, error: 'Password must be at least 6 characters long.' });
+        // --- Handle File Upload (CLOUDinary LOGIC) ---
+        if (req.file) {
+            console.log("Uploading new profile picture to Cloudinary...");
+            // 1. Convert Buffer to Data URI
+            const dataUri = bufferToDataUri(req.file);
+            
+            // 2. Call the Cloudinary utility function
+            const photoUrl = await uploadToCloudinary(dataUri); 
+            
+            if (photoUrl) {
+                // 3. Save the resulting URL.
+                updates.profilePic = photoUrl; // Assuming your model field is profilePic
+            } else {
+                 // Throwing an error will be caught by the outer catch block
+                 throw new Error('Image upload failed. Cloudinary returned no URL.');
             }
-            user.password = updateFields.newPassword; 
-            passwordChanged = true;
         }
+        // --- End of CLOUDINARY LOGIC ---
 
+        // --- Handle JSON Field Updates ---
+        if (updateFields) {
+            const fields = JSON.parse(updateFields); // Assuming updateFields is a JSON string
+            
+            if (fields.firstName) updates.firstName = fields.firstName;
+            if (fields.lastName) updates.lastName = fields.lastName;
+            if (fields.username) updates.username = fields.username;
+            if (fields.phone) updates.phone = fields.phone;
+            if (fields.email) updates.email = fields.email;
+
+            // Handle Password Change
+            if (fields.newPassword) {
+                if (fields.newPassword.length < 6) {
+                    return res.status(400).json({ success: false, error: 'Password must be at least 6 characters long.' });
+                }
+                user.password = fields.newPassword; 
+                passwordChanged = true;
+            }
+        }
+        // --- End of JSON Field Updates ---
+
+
+        // 3. Perform the database update/save
         if (passwordChanged) {
-            await user.save(); // Triggers the pre('save') hash middleware
-        } else if (Object.keys(updates).length > 0) {
-            // Update other fields
-            await User.findByIdAndUpdate(userId, updates, { 
+            // If password changed, save the user object to trigger pre('save') hash
+            await user.save(); 
+            // Invalidate all other sessions (optional but good practice)
+            user.sessions = user.sessions.filter(session => session.sessionId === req.sessionId);
+            await user.save();
+        } 
+        
+        if (Object.keys(updates).length > 0) {
+            // Update other fields (including profilePicUrl if uploaded)
+            const updatedUser = await User.findByIdAndUpdate(userId, updates, { 
                 new: true, 
                 runValidators: true
             });
-        } else {
-             return res.status(400).json({ success: false, error: 'No valid fields provided for update.' });
+            // Ensure the local 'user' variable is the most recent version
+            if (updatedUser) user = updatedUser; 
+        } 
+        
+        if (!passwordChanged && Object.keys(updates).length === 0) {
+            // If no fields were provided/changed
+            return res.status(400).json({ success: false, error: 'No valid fields or file provided for update.' });
         }
 
-        // 4. Send back the updated user profile
+
+        // 4. Send back the updated user profile (excluding sensitive fields)
         const finalUser = await User.findById(userId).select('-password -__v -resetPasswordToken -resetPasswordExpire -sessions');
 
         res.status(200).json({ success: true, data: finalUser });
 
     } catch (error) {
+        
         // Handle common Mongoose errors
         if (error.code === 11000) {
             const field = Object.keys(error.keyValue)[0];
@@ -142,12 +193,14 @@ exports.updateMe = async (req, res) => {
             return res.status(400).json({ success: false, error: messages.join(', ') });
         }
         console.error("Update Me Error:", error);
-        res.status(500).json({ success: false, error: 'Server error during profile update.' });
+        // Check for specific Cloudinary upload failure
+        const isCloudinaryError = error.message.includes('Cloudinary upload failed');
+        res.status(isCloudinaryError ? 502 : 500).json({ success: false, error: isCloudinaryError ? error.message : 'Server error during profile update.' });
     }
 };
 
 // ------------------------------------------------------------------
-// DELETE: Delete Own User Account - FIXES /api/users/me DELETE
+// DELETE: Delete Own User Account - REMOVES JWT TOKEN COOKIE & CLEARS LOCAL STORAGE STATUS
 // ------------------------------------------------------------------
 exports.deleteMyAccount = async (req, res) => {
     const userId = req.user._id;
@@ -164,11 +217,20 @@ exports.deleteMyAccount = async (req, res) => {
         // 2. Delete User document
         await User.deleteOne({ _id: userId });
         
-        // 3. Clear cookies (Assumes cookies are cleared in authController.logout, 
-        // but repeating here for direct DELETE operation certainty)
-        res.cookie('authToken', 'none', { expires: new Date(Date.now() + 10 * 1000), httpOnly: true, path: '/' });
-        res.cookie('loggedIn', 'none', { expires: new Date(Date.now() + 10 * 1000), httpOnly: false, path: '/' }); 
+        // 3. Clear cookies (CRITICAL: Removes the JWT cookie, effectively logging out)
+        // These cookies are set to expire immediately (10 seconds)
+        res.cookie('authToken', 'none', { 
+            expires: new Date(Date.now() + 10 * 1000), 
+            httpOnly: false, // Secure JWT cookie (should be true for better security but client might need to access it)
+            path: '/' 
+        });
+        res.cookie('loggedIn', 'none', { 
+            expires: new Date(Date.now() + 10 * 1000), 
+            httpOnly: false, // Client-readable status cookie
+            path: '/' 
+        }); 
 
+        // 4. Success Response
         return res.status(200).json({ 
             success: true, 
             message: `Your account and all related data have been permanently deleted.` 
@@ -185,7 +247,7 @@ exports.deleteMyAccount = async (req, res) => {
 
 
 // ------------------------------------------------------------------
-// GET: Get All Active Sessions (Protected) - FIXES /api/users/sessions GET
+// GET: Get All Active Sessions (Protected)
 // ------------------------------------------------------------------
 exports.getSessions = async (req, res) => {
     // Note: req.user contains the full user document, including the sessions array.
@@ -208,16 +270,18 @@ exports.getSessions = async (req, res) => {
 
 
 // ------------------------------------------------------------------
-// DELETE: Log Out Specific Session (Protected) - FIXES /api/users/sessions/:sessionId DELETE
+// DELETE: Log Out Specific Session (Protected) - Clears server-side session
 // ------------------------------------------------------------------
 exports.logoutSpecificSession = async (req, res) => {
     const sessionIdToDelete = req.params.sessionId;
     
+    // Security check: Prevent logging out the current session this way
     if (sessionIdToDelete === req.sessionId) {
         return res.status(403).json({ success: false, error: 'Cannot log out the current session via this endpoint. Please use the main Log Out button.' });
     }
     
     try {
+        // Use $pull to remove the session object matching the sessionId from the array
         const result = await User.updateOne(
             { _id: req.user._id },
             { $pull: { sessions: { sessionId: sessionIdToDelete } } } 
@@ -373,8 +437,8 @@ exports.trackActivity = async (req, res) => {
     const userAgent = device || req.headers['user-agent'] || 'N/A';
     
     if (!userId) {
-         // Optionally allow tracking if not logged in, but skip user update
-         return res.status(200).json({ success: true, message: 'Activity not logged as user is unauthenticated.' });
+        // Optionally allow tracking if not logged in, but skip user update
+        return res.status(200).json({ success: true, message: 'Activity not logged as user is unauthenticated.' });
     }
 
     try {

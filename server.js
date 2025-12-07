@@ -1,91 +1,101 @@
-// server.js
-
 // 1. Important Modules Ko Import Karein
 const express = require('express');
 const dotenv = require('dotenv');
-const cors = require('cors'); 
+const cors = require('cors');
 const cookieParser = require('cookie-parser'); // <-- CRITICAL: For reading the authToken cookie
 const mongoose = require('mongoose');
+const { v4: uuidv4 } = require('uuid'); // Utility for generating Session IDs
 
 // Custom files ko import karein
-const connectDB = require('./config/db'); // Apni Database Connection file
-const productRoutes = require('./routes/productRoutes'); 
-const contactRoutes = require('./routes/contactRoutes'); 
-const orderRoutes = require('./routes/orderRoutes'); 
-const dashboardRoutes = require('./routes/dashboardRoutes'); 
+// const connectDB = require('./config/db'); // Apni Database Connection file
+const productRoutes = require('./routes/productRoutes');
+const contactRoutes = require('./routes/contactRoutes');
+const orderRoutes = require('./routes/orderRoutes');
+const dashboardRoutes = require('./routes/dashboardRoutes');
 const reviewRoutes = require('./routes/reviewRoutes');
-// const authRoutes = require('./routes/authRoutes'); 
-// const userRoutes = require('./routes/userRoutes'); 
-// const activityRoutes = require('./routes/activityRoutes'); 
-
- // NEW: Combined auth and user routes
+const authRoutes = require('./routes/authRoutes');
+const userRoutes = require('./routes/userRoutes');
+const activityRoutes = require('./routes/activityRoutes'); 
 
 // 2. Environment Variables Ko Load Karein
 dotenv.config();
 
 // 3. Database Ko Connect Karein
-// NOTE: Since you did not provide config/db.js, I will use a simple connection here.
-// You must ensure your actual connectDB() function connects to the MONGO_URI in .env.
-const connectDB_simple = async () => {
-    try {
-        const conn = await mongoose.connect(process.env.MONGO_URI);
-        console.log(`MongoDB Connected: ${conn.connection.host}`);
-    } catch (error) {
-        console.error(`Error: ${error.message}`);
-        process.exit(1);
-    }
-};
+const connectDB_simple = async () => { 
+    try { 
+        const conn = await mongoose.connect(process.env.MONGO_URI); 
+        console.log(`MongoDB Connected: ${conn.connection.host}`); 
+    } catch (error) { 
+        console.error(`Error: ${error.message}`); 
+        process.exit(1); 
+    } 
+}; 
 connectDB_simple();
 
 // 4. Express App Ko Initialize Karein
 const app = express();
-
 // **Static Files ko Serve karein**
 app.use(express.static('public'));
 
 // 5. Middlewares Ko Configure Karein
-app.use(cookieParser()); // Use cookie parser BEFORE routes
-app.set('trust proxy', 1); // CRITICAL: Required for secure cookies (and getting real IP if behind proxy)
+app.use(express.json()); // Body parser for application/json
+app.use(express.urlencoded({ extended: false })); // Body parser for forms
 
-app.use(cors({
-    // Allow your development origins (FE: 5500, BE: 5000)
-    origin: ["http://127.0.0.1:5501"],
-    credentials: true, // CRITICAL: Allows cookies to be sent/received
+// CRITICAL: Cookie parser MUST be before CORS and Routes
+app.use(cookieParser()); 
+app.set('trust proxy', 1); // Required for secure cookies (and getting real IP from proxy)
+
+
+// --- CORS CONFIGURATION (Now supports all domains for dev) ---
+const corsOptions = {
+    // Development mein, request bhejne wale origin ko hi echo back karein
+    // Kyunki credentials: true ke saath origin: '*' use nahi ho sakta
+    origin: (origin, callback) => {
+        // Allow requests with no origin (like mobile apps, curl or same-origin requests)
+        if (!origin) return callback(null, true);
+        
+        // Agar production mein hai, toh sirf FRONTEND_URL ko allow karein
+        if (process.env.NODE_ENV === 'production' && origin !== process.env.FRONTEND_URL) {
+            return callback(new Error('Not allowed by CORS'), false);
+        }
+        
+        // Development mein, kisi bhi origin ko allow karein (Cross-Origin issue fix ke liye)
+        callback(null, true); 
+    },
+    credentials: true, // Allow cookies to be sent/received
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    exposedHeaders: ['Set-Cookie']
-}));
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+};
 
-// Body Parser: Incoming request bodies ko JSON format mein parse karne ke liye
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
+app.use(cors(corsOptions));
+// -----------------------------------------------------------
 
-// 6. Root Route (Testing)
-app.get('/', (req, res) => {
-    res.send('API is running successfully!');
-});
 
-// 7. Routes Ko Link Karein
+// 6. Routes Ko Define Karein
+app.use('/api/auth', authRoutes); // /api/auth/login, /api/auth/register, /api/auth/logout
+app.use('/api/users', userRoutes); // /api/users/me, /api/users/sessions, /api/users (admin)
 app.use('/api/products', productRoutes);
 app.use('/api/contact', contactRoutes);
 app.use('/api/orders', orderRoutes);
-app.use('/api/v1', dashboardRoutes); 
-// ⭐ NEW: Review Routes Ko Link Karein
+app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/reviews', reviewRoutes);
-// ⭐ Core Authentication and User Routes
-// This mounts auth and user routes under /api
-// app.use('/api/auth', authRoutes);
-// app.use('/api/users', userRoutes);
-// app.use('/api/activity', activityRoutes);zz
-// 8. Error Handling Middleware (Recommended last middleware)
+app.use('/api/activity', activityRoutes);
+
+
+// 7. Global Error Handler (Must be last middleware)
 app.use((err, req, res, next) => {
+    // [Error handling logic omitted for brevity]
     console.error(err.stack);
-    res.status(500).json({ success: false, error: 'Something broke!' });
+    res.status(err.statusCode || 500).json({ 
+        success: false, 
+        error: err.message || 'Server Error' 
+    });
 });
 
 
-// 9. Start Server
+// 8. Server Ko Start Karein
 const PORT = process.env.PORT || 5000;
+
 const server = app.listen(PORT, () => {
     console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
 });

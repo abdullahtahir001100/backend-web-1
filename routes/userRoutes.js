@@ -1,56 +1,78 @@
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
 
-// Import controller functions
+// Import controller functions from userController.js
 const {
-  getMe,
-  updateMe,
-  deleteMyAccount,
-  getSessions,
-  logoutSpecificSession,
-  getUsers,
-  getUserDetails,
-  trackActivity,
-  deleteUser,
-  makeAdmin
+    getMe,
+    updateMe,
+    deleteMyAccount,
+    getSessions,
+    logoutSpecificSession,
+    getUsers,
+    getUserDetails,
+    trackActivity,
+    deleteUser,
+    makeAdmin
 } = require('../controllers/userController');
 
-// Import auth middleware (assuming you have 'protect' and 'restrictTo' defined)
-// NOTE: Assuming the file is named authMiddleware.js
-const { protect, restrictTo } = require('../middleware/authMiddleware'); 
 
-// =========================================================
-// USER-SPECIFIC PROTECTED ROUTES
-// =========================================================
+// Import authentication middleware (protect for login check, restrictTo for role check)
+const { protect, restrictTo } = require('../middleware/authMiddleware'); // Assumes authController's functions are available via authMiddleware
 
-// Protected routes for current user (/me)
+const upload = multer({ 
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
+});
+// ==================================================================
+// --- PROTECTED USER-SPECIFIC ENDPOINTS (/api/users/me) ---
+// ==================================================================
+
 router.route('/me')
-  .get(protect, getMe)        // GET /api/users/me - Get current user profile
-  .put(protect, updateMe)     // PUT /api/users/me - Update current user profile
-  .delete(protect, deleteMyAccount); // DELETE /api/users/me - Delete own account
+    // GET /api/users/me: Get current user profile and session details (Protected)
+    .get(protect, getMe) 
+    // PUT /api/users/me: Update current user profile (Requires password verification)
+   .put(protect, upload.single('profile_image'), updateMe)
+    // DELETE /api/users/me: Permanently delete own account and associated data
+    .delete(protect, deleteMyAccount); 
 
-// Sessions management
-router.get('/sessions', protect, getSessions); // GET /api/users/sessions - Get all sessions
-router.delete('/sessions/:sessionId', protect, logoutSpecificSession); // DELETE /api/users/sessions/:sessionId - Logout specific session
 
-// Activity tracking
-router.post('/activity', protect, trackActivity); // POST /api/users/activity - Track activity
+// ==================================================================
+// --- SESSION MANAGEMENT ENDPOINTS ---
+// ==================================================================
 
-// =========================================================
-// ADMIN-ONLY ROUTES
-// =========================================================
+// GET /api/users/sessions: Get a list of all active sessions for the current user
+router.get('/sessions', protect, getSessions); 
 
-/**
- * The next router.use() line applies both 'protect' and 'restrictTo('admin')' 
- * middleware to ALL subsequent routes defined in this router file.
- * The restrictTo function takes 'admin' as an argument and returns the 
- * actual middleware function, which is the correct pattern.
- */
-router.use(protect, restrictTo('admin')); // All below require admin role
+// DELETE /api/users/sessions/:sessionId: Log out a specific remote session by ID
+router.delete('/sessions/:sessionId', protect, logoutSpecificSession); 
 
-router.get('/', getUsers); // GET /api/users - Get all users (admin)
-router.get('/:id', getUserDetails); // GET /api/users/:id - Get single user details (admin)
-router.delete('/:id', deleteUser); // DELETE /api/users/:id - Delete user (admin)
-router.post('/make-admin', makeAdmin); // POST /api/users/make-admin - Make user admin (admin)
+
+// ==================================================================
+// --- ACTIVITY TRACKING ENDPOINTS ---
+// ==================================================================
+
+// POST /api/users/activity: Log user activity and update lastActivity/device fields
+router.post('/activity', protect, trackActivity); 
+
+
+// ==================================================================
+// --- ADMIN-ONLY ENDPOINTS ---
+// ==================================================================
+
+// All routes below this point must pass the `protect` and `restrictTo('admin')` middleware
+router.use(protect, restrictTo('admin')); 
+
+// GET /api/users: Get a list of all non-admin users
+router.get('/', getUsers); 
+
+// GET /api/users/:id: Get full details (orders, logs, metrics) for a single user
+router.get('/:id', getUserDetails); 
+
+// DELETE /api/users/:id: Delete a user and all related data (Admin action)
+router.delete('/:id', deleteUser); 
+
+// POST /api/users/make-admin: Promote a user to admin role by email
+router.post('/make-admin', makeAdmin); 
 
 module.exports = router;
