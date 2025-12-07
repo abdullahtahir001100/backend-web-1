@@ -50,18 +50,7 @@ app.set('trust proxy', 1); // Required for secure cookies (and getting real IP f
 const corsOptions = {
     // Development mein, request bhejne wale origin ko hi echo back karein
     // Kyunki credentials: true ke saath origin: '*' use nahi ho sakta
-    origin: (origin, callback) => {
-        // Allow requests with no origin (like mobile apps, curl or same-origin requests)
-        if (!origin) return callback(null, true);
-        
-        // Agar production mein hai, toh sirf FRONTEND_URL ko allow karein
-        if (process.env.NODE_ENV === 'production' && origin !== process.env.FRONTEND_URL) {
-            return callback(new Error('Not allowed by CORS'), false);
-        }
-        
-        // Development mein, kisi bhi origin ko allow karein (Cross-Origin issue fix ke liye)
-        callback(null, true); 
-    },
+    origin: "http://127.0.0.1:5501",
     credentials: true, // Allow cookies to be sent/received
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
@@ -71,9 +60,9 @@ app.use(cors(corsOptions));
 // -----------------------------------------------------------
 
 
-// 6. Routes Ko Define Karein
-app.use('/api/auth', authRoutes); // /api/auth/login, /api/auth/register, /api/auth/logout
-app.use('/api/users', userRoutes); // /api/users/me, /api/users/sessions, /api/users (admin)
+
+app.use('/api/auth', authRoutes); 
+app.use('/api/users', userRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/contact', contactRoutes);
 app.use('/api/orders', orderRoutes);
@@ -94,7 +83,7 @@ app.use((err, req, res, next) => {
 
 
 // 8. Server Ko Start Karein
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 8000;
 
 const server = app.listen(PORT, () => {
     console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
