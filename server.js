@@ -66,7 +66,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/contact', contactRoutes);
 app.use('/api/orders', orderRoutes);
-app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/v1', dashboardRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/activity', activityRoutes);
 
