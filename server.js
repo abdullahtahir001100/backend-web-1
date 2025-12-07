@@ -50,7 +50,7 @@ app.set('trust proxy', 1); // Required for secure cookies (and getting real IP f
 const corsOptions = {
     // Development mein, request bhejne wale origin ko hi echo back karein
     // Kyunki credentials: true ke saath origin: '*' use nahi ho sakta
-    origin: "http://127.0.0.1:5501",
+    origin: "https://website-kappa-woad.vercel.app",
     credentials: true, // Allow cookies to be sent/received
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
