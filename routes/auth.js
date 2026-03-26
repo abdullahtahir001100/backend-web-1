@@ -6,27 +6,37 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const OTP = require('../models/OTP');
 
-// Initialize Resend with your API Key
+// Initialize Resend
 const resend = new Resend('re_ZrEPwS8B_4LmczeFrB3S34171FNuEnDyx');
 
-// --- 1. LOGIN (Authenticate) ---
+// --- 1. LOGIN (With Strict Data Cleaning) ---
 router.post('/login', async (req, res) => {
     console.log(">> [AUTH] LOGIN_ATTEMPT_START");
-    const { email, password } = req.body;
-
+    
     try {
+        // Cleaning input data (Removing accidental spaces)
+        const email = req.body.email ? req.body.email.trim().toLowerCase() : "";
+        const password = req.body.password ? req.body.password.trim() : "";
+
+        if (!email || !password) {
+            return res.status(400).json({ message: "CREDENTIALS_REQUIRED" });
+        }
+
         const user = await User.findOne({ email });
         if (!user) {
             console.log("-- [AUTH] IDENTITY_UNKNOWN:", email);
             return res.status(401).json({ message: "ACCESS_DENIED: IDENTITY_UNKNOWN" });
         }
 
+        // Direct bcrypt comparison
         const isMatch = await bcrypt.compare(password, user.password);
+        
         if (!isMatch) {
             console.log("-- [AUTH] HASH_MISMATCH for:", email);
             return res.status(401).json({ message: "ACCESS_DENIED: HASH_MISMATCH" });
         }
 
+        // Generate Secure Token
         const token = jwt.sign(
             { id: user._id, username: user.username }, 
             process.env.JWT_SECRET || 'GATEWAY_SECRET_2026', 
@@ -49,7 +59,7 @@ router.post('/login', async (req, res) => {
 // --- 2. FORGOT PASSWORD (OTP System) ---
 router.post('/forgot-password', async (req, res) => {
     console.log(">> [AUTH] FORGOT_PWD_REQUESTED");
-    const { email } = req.body;
+    const email = req.body.email ? req.body.email.trim().toLowerCase() : "";
 
     try {
         const user = await User.findOne({ email });
@@ -81,7 +91,7 @@ router.post('/forgot-password', async (req, res) => {
         });
 
         if (error) throw error;
-        console.log(">> [AUTH] OTP_DISPATCHED_SUCCESSFULLY to:", email);
+        console.log(">> [AUTH] OTP_DISPATCHED to:", email);
         res.json({ message: "RECOVERY_HASH_DISPATCHED" });
 
     } catch (err) {
@@ -96,17 +106,17 @@ router.post('/reset-password', async (req, res) => {
     const { email, otp, newPassword } = req.body;
 
     try {
-        const otpRecord = await OTP.findOne({ email, otp });
+        const otpRecord = await OTP.findOne({ email: email.trim().toLowerCase(), otp });
         if (!otpRecord) {
             console.log("-- [AUTH] RESET_REJECTED: Invalid/Expired OTP");
             return res.status(400).json({ message: "INVALID_OR_EXPIRED_HASH" });
         }
 
         const salt = await bcrypt.genSalt(10);
-        const hashedPassword = await bcrypt.hash(newPassword, salt);
+        const hashedPassword = await bcrypt.hash(newPassword.trim(), salt);
 
-        await User.findOneAndUpdate({ email }, { password: hashedPassword });
-        await OTP.deleteOne({ email });
+        await User.findOneAndUpdate({ email: email.trim().toLowerCase() }, { password: hashedPassword });
+        await OTP.deleteOne({ email: email.trim().toLowerCase() });
 
         console.log(">> [AUTH] ACCESS_HASH_UPDATED for:", email);
         res.json({ message: "ACCESS_HASH_UPDATED_SUCCESSFULLY" });
@@ -117,11 +127,11 @@ router.post('/reset-password', async (req, res) => {
     }
 });
 
-// --- 4. FORCE SEED (With Index Cleanup) ---
+// --- 4. FORCE SEED (The Ultimate Fix) ---
 router.get('/force-seed', async (req, res) => {
     console.log(">> [SYSTEM] AGGRESSIVE_SEED_STARTED");
     try {
-        // Step 1: Drop purane indexes jo error de rahe hain (jaise phone_1)
+        // Step 1: Cleanup old indexes that cause duplicate key errors
         try {
             await User.collection.dropIndexes();
             console.log(">> [SYSTEM] OLD_INDEXES_DROPPED");
@@ -129,16 +139,16 @@ router.get('/force-seed', async (req, res) => {
             console.log(">> [SYSTEM] NO_INDEXES_TO_DROP");
         }
 
-        // Step 2: Purana user delete karein
-        await User.deleteMany({ email: "abdullahtahi001@gmail.com" });
-        console.log(">> [SYSTEM] CLEANING_OLD_IDENTITY");
+        // Step 2: Delete existing users to prevent conflicts
+        await User.deleteMany({}); 
+        console.log(">> [SYSTEM] DATABASE_CLEANED");
 
-        // Step 3: Naya hashed password generate karein
-        const passwordToHash = 'pak1234567';
+        // Step 3: Secure Hashing
+        const plainPassword = 'pak1234567';
         const salt = await bcrypt.genSalt(10);
-        const hashedPassword = await bcrypt.hash(passwordToHash, salt);
+        const hashedPassword = await bcrypt.hash(plainPassword, salt);
 
-        // Step 4: Admin Create karein
+        // Step 4: Provision Admin
         await User.create({ 
             username: "abdullahtahir", 
             email: "abdullahtahi001@gmail.com", 
@@ -147,7 +157,7 @@ router.get('/force-seed', async (req, res) => {
         });
 
         console.log(">> [SYSTEM] SEED_SUCCESSFUL: ADMIN_PROVISIONED");
-        res.send("Seed Successful! Login: abdullahtahi001@gmail.com | Pass: pak1234567");
+        res.send("Seed Done! Login with: abdullahtahi001@gmail.com / pak1234567");
 
     } catch (err) {
         console.error("!! [SYSTEM] SEED_CRITICAL_FAIL:", err.message);
