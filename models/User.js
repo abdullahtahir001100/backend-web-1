@@ -23,23 +23,17 @@ const UserSchema = new mongoose.Schema({
     role: {
         type: String,
         enum: ['admin', 'developer', 'user'],
-        default: 'admin' // Aapki professional identity ke mutabiq default admin rakha hai
+        default: 'admin'
     },
     resetPasswordOTP: String,
-    resetPasswordExpires: Date,
-    createdAt: {
-        type: Date,
-        default: Date.now
-    }
+    resetPasswordExpires: Date
 }, { 
-    timestamps: true // Yeh automatic createdAt aur updatedAt manage karega
+    timestamps: true 
 });
 
-// --- Password Hashing Middleware ---
-// Save hone se pehle password ko encrypt karne ke liye
+// Password Hashing Middleware
 UserSchema.pre('save', async function(next) {
     if (!this.isModified('password')) return next();
-    
     try {
         const salt = await bcrypt.genSalt(10);
         this.password = await bcrypt.hash(this.password, salt);
@@ -49,8 +43,7 @@ UserSchema.pre('save', async function(next) {
     }
 });
 
-// --- Password Verification Method ---
-// Login ke waqt password check karne ke liye helper function
+// Password Verification Method
 UserSchema.methods.comparePassword = async function(candidatePassword) {
     return await bcrypt.compare(candidatePassword, this.password);
 };
