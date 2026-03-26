@@ -9,12 +9,11 @@ const OTP = require('../models/OTP');
 // Initialize Resend
 const resend = new Resend('re_ZrEPwS8B_4LmczeFrB3S34171FNuEnDyx');
 
-// --- 1. LOGIN (With Strict Data Cleaning) ---
+// --- 1. LOGIN (With Trim Protection) ---
 router.post('/login', async (req, res) => {
     console.log(">> [AUTH] LOGIN_ATTEMPT_START");
     
     try {
-        // Cleaning input data (Removing accidental spaces)
         const email = req.body.email ? req.body.email.trim().toLowerCase() : "";
         const password = req.body.password ? req.body.password.trim() : "";
 
@@ -28,7 +27,7 @@ router.post('/login', async (req, res) => {
             return res.status(401).json({ message: "ACCESS_DENIED: IDENTITY_UNKNOWN" });
         }
 
-        // Direct bcrypt comparison
+        // Bcrypt compare (Direct)
         const isMatch = await bcrypt.compare(password, user.password);
         
         if (!isMatch) {
@@ -36,14 +35,13 @@ router.post('/login', async (req, res) => {
             return res.status(401).json({ message: "ACCESS_DENIED: HASH_MISMATCH" });
         }
 
-        // Generate Secure Token
         const token = jwt.sign(
             { id: user._id, username: user.username }, 
             process.env.JWT_SECRET || 'GATEWAY_SECRET_2026', 
             { expiresIn: '24h' }
         );
 
-        console.log(">> [AUTH] LOGIN_SUCCESSFUL for:", user.username);
+        console.log(">> [AUTH] LOGIN_SUCCESSFUL");
         res.json({ 
             success: true,
             token, 
@@ -56,61 +54,35 @@ router.post('/login', async (req, res) => {
     }
 });
 
-// --- 2. FORGOT PASSWORD (OTP System) ---
+// --- 2. FORGOT PASSWORD ---
 router.post('/forgot-password', async (req, res) => {
-    console.log(">> [AUTH] FORGOT_PWD_REQUESTED");
     const email = req.body.email ? req.body.email.trim().toLowerCase() : "";
-
     try {
         const user = await User.findOne({ email });
-        if (!user) {
-            console.log("-- [AUTH] RECOVERY_REJECTED: Email not found");
-            return res.status(404).json({ message: "IDENTITY_NOT_FOUND" });
-        }
+        if (!user) return res.status(404).json({ message: "IDENTITY_NOT_FOUND" });
 
         const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+        await OTP.findOneAndUpdate({ email }, { otp: otpCode, createdAt: Date.now() }, { upsert: true });
 
-        await OTP.findOneAndUpdate(
-            { email }, 
-            { otp: otpCode, createdAt: Date.now() }, 
-            { upsert: true }
-        );
-
-        const { error } = await resend.emails.send({
+        await resend.emails.send({
             from: 'Gateway <system@abdullahtahir.me>',
             to: [email],
             subject: 'GATEWAY_ACCESS_RECOVERY',
-            html: `
-                <div style="background:#030303; color:#fff; padding:20px; border:1px solid #ff2a00; font-family:monospace;">
-                    <h2 style="color:#ff2a00;">INKBYHAND_SECURITY</h2>
-                    <p>RECOVERY_HASH_GENERATED:</p>
-                    <h1 style="text-align:center; letter-spacing:5px;">${otpCode}</h1>
-                    <p>EXPIRES_IN: 10_MINUTES</p>
-                </div>
-            `
+            html: `<div style="background:#000;color:#fff;padding:20px;border:1px solid #f00;">OTP: ${otpCode}</div>`
         });
 
-        if (error) throw error;
-        console.log(">> [AUTH] OTP_DISPATCHED to:", email);
         res.json({ message: "RECOVERY_HASH_DISPATCHED" });
-
     } catch (err) {
-        console.error("!! [AUTH] DISPATCH_ERROR:", err.message);
         res.status(500).json({ message: "DISPATCH_FAILED" });
     }
 });
 
 // --- 3. RESET PASSWORD ---
 router.post('/reset-password', async (req, res) => {
-    console.log(">> [AUTH] RESET_PWD_ATTEMPT");
     const { email, otp, newPassword } = req.body;
-
     try {
         const otpRecord = await OTP.findOne({ email: email.trim().toLowerCase(), otp });
-        if (!otpRecord) {
-            console.log("-- [AUTH] RESET_REJECTED: Invalid/Expired OTP");
-            return res.status(400).json({ message: "INVALID_OR_EXPIRED_HASH" });
-        }
+        if (!otpRecord) return res.status(400).json({ message: "INVALID_OR_EXPIRED_HASH" });
 
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(newPassword.trim(), salt);
@@ -118,49 +90,38 @@ router.post('/reset-password', async (req, res) => {
         await User.findOneAndUpdate({ email: email.trim().toLowerCase() }, { password: hashedPassword });
         await OTP.deleteOne({ email: email.trim().toLowerCase() });
 
-        console.log(">> [AUTH] ACCESS_HASH_UPDATED for:", email);
         res.json({ message: "ACCESS_HASH_UPDATED_SUCCESSFULLY" });
-
     } catch (err) {
-        console.error("!! [AUTH] RESET_ERROR:", err.message);
         res.status(500).json({ message: "RESET_PROTOCOL_FAILED" });
     }
 });
 
-// --- 4. FORCE SEED (The Ultimate Fix) ---
+// --- 4. FORCE SEED (The No-Bypass Version) ---
 router.get('/force-seed', async (req, res) => {
     console.log(">> [SYSTEM] AGGRESSIVE_SEED_STARTED");
     try {
-        // Step 1: Cleanup old indexes that cause duplicate key errors
-        try {
-            await User.collection.dropIndexes();
-            console.log(">> [SYSTEM] OLD_INDEXES_DROPPED");
-        } catch (e) {
-            console.log(">> [SYSTEM] NO_INDEXES_TO_DROP");
-        }
+        // Step 1: Drop indexes
+        try { await User.collection.dropIndexes(); } catch (e) { console.log("No indexes"); }
 
-        // Step 2: Delete existing users to prevent conflicts
+        // Step 2: Clear Collection
         await User.deleteMany({}); 
-        console.log(">> [SYSTEM] DATABASE_CLEANED");
 
         // Step 3: Secure Hashing
-        const plainPassword = 'pak1234567';
         const salt = await bcrypt.genSalt(10);
-        const hashedPassword = await bcrypt.hash(plainPassword, salt);
+        const hashedPassword = await bcrypt.hash('pak1234567', salt);
 
-        // Step 4: Provision Admin
-        await User.create({ 
+        // Step 4: Direct Insert (Bypass Mongoose middleware to avoid double hashing)
+        await User.collection.insertOne({ 
             username: "abdullahtahir", 
             email: "abdullahtahi001@gmail.com", 
             password: hashedPassword,
-            role: "admin" 
+            role: "admin",
+            createdAt: new Date(),
+            updatedAt: new Date()
         });
 
-        console.log(">> [SYSTEM] SEED_SUCCESSFUL: ADMIN_PROVISIONED");
-        res.send("Seed Done! Login with: abdullahtahi001@gmail.com / pak1234567");
-
+        res.send("Seed Done! Login: abdullahtahi001@gmail.com / pak1234567");
     } catch (err) {
-        console.error("!! [SYSTEM] SEED_CRITICAL_FAIL:", err.message);
         res.status(500).send("Seed Failed: " + err.message);
     }
 });
