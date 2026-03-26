@@ -1,15 +1,13 @@
 const express = require('express');
 const router = express.Router();
 const { Resend } = require('resend');
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const OTP = require('../models/OTP');
 
 // Initialize Resend
 const resend = new Resend('re_ZrEPwS8B_4LmczeFrB3S34171FNuEnDyx');
 
-// --- 1. LOGIN (With Trim Protection) ---
+// --- 1. LOGIN (Direct Plain Text Match) ---
 router.post('/login', async (req, res) => {
     console.log(">> [AUTH] LOGIN_ATTEMPT_START");
     
@@ -21,30 +19,17 @@ router.post('/login', async (req, res) => {
             return res.status(400).json({ message: "CREDENTIALS_REQUIRED" });
         }
 
-        const user = await User.findOne({ email });
-        if (!user) {
-            console.log("-- [AUTH] IDENTITY_UNKNOWN:", email);
-            return res.status(401).json({ message: "ACCESS_DENIED: IDENTITY_UNKNOWN" });
-        }
-
-        // Bcrypt compare (Direct)
-        const isMatch = await bcrypt.compare(password, user.password);
+        // Direct database match - No Bcrypt
+        const user = await User.findOne({ email, password });
         
-        if (!isMatch) {
-            console.log("-- [AUTH] HASH_MISMATCH for:", email);
-            return res.status(401).json({ message: "ACCESS_DENIED: HASH_MISMATCH" });
+        if (!user) {
+            console.log("-- [AUTH] INVALID_CREDENTIALS:", email);
+            return res.status(401).json({ message: "ACCESS_DENIED: INVALID_CREDENTIALS" });
         }
-
-        const token = jwt.sign(
-            { id: user._id, username: user.username }, 
-            process.env.JWT_SECRET || 'GATEWAY_SECRET_2026', 
-            { expiresIn: '24h' }
-        );
 
         console.log(">> [AUTH] LOGIN_SUCCESSFUL");
         res.json({ 
             success: true,
-            token, 
             user: { username: user.username, email: user.email } 
         });
 
@@ -54,7 +39,7 @@ router.post('/login', async (req, res) => {
     }
 });
 
-// --- 2. FORGOT PASSWORD ---
+// --- 2. FORGOT PASSWORD (OTP Dispatch) ---
 router.post('/forgot-password', async (req, res) => {
     const email = req.body.email ? req.body.email.trim().toLowerCase() : "";
     try {
@@ -64,11 +49,19 @@ router.post('/forgot-password', async (req, res) => {
         const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
         await OTP.findOneAndUpdate({ email }, { otp: otpCode, createdAt: Date.now() }, { upsert: true });
 
+        // Email Sending via Resend
         await resend.emails.send({
             from: 'Gateway <system@abdullahtahir.me>',
             to: [email],
             subject: 'GATEWAY_ACCESS_RECOVERY',
-            html: `<div style="background:#000;color:#fff;padding:20px;border:1px solid #f00;">OTP: ${otpCode}</div>`
+            html: `
+                <div style="background:#030303; color:#fff; padding:20px; border:1px solid #ff2a00; font-family:monospace;">
+                    <h2 style="color:#ff2a00;">SECURITY_GATEWAY</h2>
+                    <p>RECOVERY_OTP_GENERATED:</p>
+                    <h1 style="text-align:center; letter-spacing:5px;">${otpCode}</h1>
+                    <p>EXPIRES_IN: 10_MINUTES</p>
+                </div>
+            `
         });
 
         res.json({ message: "RECOVERY_HASH_DISPATCHED" });
@@ -77,17 +70,19 @@ router.post('/forgot-password', async (req, res) => {
     }
 });
 
-// --- 3. RESET PASSWORD ---
+// --- 3. RESET PASSWORD (Plain Text Update) ---
 router.post('/reset-password', async (req, res) => {
     const { email, otp, newPassword } = req.body;
     try {
         const otpRecord = await OTP.findOne({ email: email.trim().toLowerCase(), otp });
         if (!otpRecord) return res.status(400).json({ message: "INVALID_OR_EXPIRED_HASH" });
 
-        const salt = await bcrypt.genSalt(10);
-        const hashedPassword = await bcrypt.hash(newPassword.trim(), salt);
-
-        await User.findOneAndUpdate({ email: email.trim().toLowerCase() }, { password: hashedPassword });
+        // Password direct plain text mein update hoga
+        await User.findOneAndUpdate(
+            { email: email.trim().toLowerCase() }, 
+            { password: newPassword.trim() }
+        );
+        
         await OTP.deleteOne({ email: email.trim().toLowerCase() });
 
         res.json({ message: "ACCESS_HASH_UPDATED_SUCCESSFULLY" });
@@ -96,31 +91,23 @@ router.post('/reset-password', async (req, res) => {
     }
 });
 
-// --- 4. FORCE SEED (The No-Bypass Version) ---
+// --- 4. FORCE SEED (The Simple Reset) ---
 router.get('/force-seed', async (req, res) => {
-    console.log(">> [SYSTEM] AGGRESSIVE_SEED_STARTED");
+    console.log(">> [SYSTEM] PLAIN_TEXT_SEED_STARTED");
     try {
-        // Step 1: Drop indexes
         try { await User.collection.dropIndexes(); } catch (e) { console.log("No indexes"); }
 
-        // Step 2: Clear Collection
         await User.deleteMany({}); 
 
-        // Step 3: Secure Hashing
-        const salt = await bcrypt.genSalt(10);
-        const hashedPassword = await bcrypt.hash('pak1234567', salt);
-
-        // Step 4: Direct Insert (Bypass Mongoose middleware to avoid double hashing)
-        await User.collection.insertOne({ 
+        // Direct Insert without Hashing
+        await User.create({ 
             username: "abdullahtahir", 
             email: "abdullahtahi001@gmail.com", 
-            password: hashedPassword,
-            role: "admin",
-            createdAt: new Date(),
-            updatedAt: new Date()
+            password: "pak1234567", 
+            role: "admin" 
         });
 
-        res.send("Seed Done! Login: abdullahtahi001@gmail.com / pak1234567");
+        res.send("Seed Done! Logic: Plain-Text | No-JWT");
     } catch (err) {
         res.status(500).send("Seed Failed: " + err.message);
     }
