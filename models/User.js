@@ -1,51 +1,11 @@
 const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
 
 const UserSchema = new mongoose.Schema({
-    username: {
-        type: String,
-        required: [true, 'Username is required'],
-        unique: true,
-        trim: true
-    },
-    email: {
-        type: String,
-        required: [true, 'Admin identity (email) is required'],
-        unique: true,
-        lowercase: true,
-        trim: true
-    },
-    password: {
-        type: String,
-        required: [true, 'Access hash (password) is required'],
-        minlength: 8
-    },
-    role: {
-        type: String,
-        enum: ['admin', 'developer', 'user'],
-        default: 'admin'
-    },
-    resetPasswordOTP: String,
-    resetPasswordExpires: Date
-}, { 
-    timestamps: true 
-});
+    username: { type: String, required: true, unique: true },
+    email: { type: String, required: true, unique: true, lowercase: true },
+    password: { type: String, required: true }, // Plain text password
+    role: { type: String, default: 'admin' }
+}, { timestamps: true });
 
-// Password Hashing Middleware
-UserSchema.pre('save', async function(next) {
-    if (!this.isModified('password')) return next();
-    try {
-        const salt = await bcrypt.genSalt(10);
-        this.password = await bcrypt.hash(this.password, salt);
-        next();
-    } catch (err) {
-        next(err);
-    }
-});
-
-// Password Verification Method
-UserSchema.methods.comparePassword = async function(candidatePassword) {
-    return await bcrypt.compare(candidatePassword, this.password);
-};
-
+// Models ko export karte waqt check karein
 module.exports = mongoose.models.User || mongoose.model('User', UserSchema);
