@@ -13,7 +13,7 @@ const contactRoutes = require('./routes/contactRoutes');
 const orderRoutes = require('./routes/orderRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
 const reviewRoutes = require('./routes/reviewRoutes');
-const authRoutes = require('./routes/authRoutes');
+const auth = require('./routes/auth');
 const userRoutes = require('./routes/userRoutes');
 const activityRoutes = require('./routes/activityRoutes'); 
 
@@ -61,7 +61,7 @@ app.use(cors(corsOptions));
 
 
 
-app.use('/api/auth', authRoutes); 
+app.use('/api/auth', auth); 
 app.use('/api/users', userRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/contact', contactRoutes);
