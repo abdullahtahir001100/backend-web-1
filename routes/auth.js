@@ -6,33 +6,33 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const OTP = require('../models/OTP');
 
-// Aapki provide ki hui Resend API Key
 const resend = new Resend('re_ZrEPwS8B_4LmczeFrB3S34171FNuEnDyx');
 
 // --- 1. LOGIN (Authenticate) ---
 router.post('/login', async (req, res) => {
+    console.log(">> LOGIN_ROUTE_TRIGGERED"); // Check message
     const { email, password } = req.body;
 
     try {
-        // Identity check
         const user = await User.findOne({ email });
         if (!user) {
+            console.log("-- IDENTITY_UNKNOWN");
             return res.status(401).json({ message: "ACCESS_DENIED: IDENTITY_UNKNOWN" });
         }
 
-        // Password Hash Comparison
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
+            console.log("-- HASH_MISMATCH");
             return res.status(401).json({ message: "ACCESS_DENIED: HASH_MISMATCH" });
         }
 
-        // Token Generation for Dashboard Access
         const token = jwt.sign(
             { id: user._id, username: user.username }, 
             process.env.JWT_SECRET || 'GATEWAY_SECRET_2026', 
             { expiresIn: '24h' }
         );
 
+        console.log(">> LOGIN_SUCCESSFUL");
         res.json({ 
             success: true,
             token, 
@@ -40,29 +40,28 @@ router.post('/login', async (req, res) => {
         });
 
     } catch (err) {
+        console.error("!! LOGIN_CORE_ERROR:", err.message);
         res.status(500).json({ message: "SYSTEM_CORE_ERROR" });
     }
 });
 
 // --- 2. FORGOT PASSWORD (OTP System) ---
 router.post('/forgot-password', async (req, res) => {
+    console.log(">> FORGOT_PWD_ROUTE_TRIGGERED");
     const { email } = req.body;
 
     try {
         const user = await User.findOne({ email });
         if (!user) return res.status(404).json({ message: "IDENTITY_NOT_FOUND" });
 
-        // Generate 6-digit OTP
         const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
 
-        // Save to OTP Model (Temporary Store)
         await OTP.findOneAndUpdate(
             { email }, 
             { otp: otpCode, createdAt: Date.now() }, 
             { upsert: true }
         );
 
-        // Send Email via Resend
         const { error } = await resend.emails.send({
             from: 'Gateway <system@abdullahtahir.me>',
             to: [email],
@@ -78,15 +77,18 @@ router.post('/forgot-password', async (req, res) => {
         });
 
         if (error) throw error;
+        console.log(">> OTP_DISPATCHED_TO:", email);
         res.json({ message: "RECOVERY_HASH_DISPATCHED" });
 
     } catch (err) {
+        console.error("!! DISPATCH_ERROR:", err.message);
         res.status(500).json({ message: "DISPATCH_FAILED" });
     }
 });
 
 // --- 3. RESET PASSWORD ---
 router.post('/reset-password', async (req, res) => {
+    console.log(">> RESET_PWD_ROUTE_TRIGGERED");
     const { email, otp, newPassword } = req.body;
 
     try {
@@ -99,22 +101,39 @@ router.post('/reset-password', async (req, res) => {
         await User.findOneAndUpdate({ email }, { password: hashedPassword });
         await OTP.deleteOne({ email });
 
+        console.log(">> PASSWORD_RESET_SUCCESS");
         res.json({ message: "ACCESS_HASH_UPDATED_SUCCESSFULLY" });
 
     } catch (err) {
+        console.error("!! RESET_ERROR:", err.message);
         res.status(500).json({ message: "RESET_PROTOCOL_FAILED" });
     }
 });
+
+// --- 4. FORCE SEED (Production Only) ---
 router.get('/force-seed', async (req, res) => {
-    const User = require('../models/User');
-    const bcrypt = require('bcryptjs');
-    const hash = await bcrypt.hash("admin_gateway_2026", 10);
-    await User.create({ 
-        username: "abdullahtahir", 
-        email: "abdullahtahi001@gmail.com", 
-        password: 'pak1234567', 
-        role: "admin" 
-    });
-    res.send("Seed Done!");
+    console.log(">> SEED_PROCESS_STARTED");
+    try {
+        const passwordToHash = 'pak1234567';
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(passwordToHash, salt);
+
+        // Purana user delete karein agar exists karta hai taake naya hash save ho
+        await User.deleteOne({ email: "abdullahtahi001@gmail.com" });
+
+        await User.create({ 
+            username: "abdullahtahir", 
+            email: "abdullahtahi001@gmail.com", 
+            password: hashedPassword, // Hashed password save ho raha hai
+            role: "admin" 
+        });
+
+        console.log(">> SEED_SUCCESSFUL: USER_CREATED");
+        res.send("Seed Done! You can now login with: abdullahtahi001@gmail.com / pak1234567");
+    } catch (err) {
+        console.error("!! SEED_ERROR:", err.message);
+        res.status(500).send("Seed Failed: " + err.message);
+    }
 });
+
 module.exports = router;
